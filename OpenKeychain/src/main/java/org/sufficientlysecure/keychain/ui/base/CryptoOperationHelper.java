@@ -17,6 +17,7 @@
 
 package org.sufficientlysecure.keychain.ui.base;
 
+
 import java.util.Date;
 
 import android.app.Activity;
@@ -38,10 +39,10 @@ import org.sufficientlysecure.keychain.service.KeychainService;
 import org.sufficientlysecure.keychain.service.ServiceProgressHandler;
 import org.sufficientlysecure.keychain.service.input.CryptoInputParcel;
 import org.sufficientlysecure.keychain.service.input.RequiredInputParcel;
-import org.sufficientlysecure.keychain.ui.SecurityTokenOperationActivity;
 import org.sufficientlysecure.keychain.ui.OrbotRequiredDialogActivity;
 import org.sufficientlysecure.keychain.ui.PassphraseDialogActivity;
 import org.sufficientlysecure.keychain.ui.RetryUploadDialogActivity;
+import org.sufficientlysecure.keychain.ui.SecurityTokenOperationActivity;
 import org.sufficientlysecure.keychain.ui.dialog.ProgressDialogFragment;
 import timber.log.Timber;
 
@@ -295,12 +296,6 @@ public class CryptoOperationHelper<T extends Parcelable, S extends OperationResu
             return;
         }
 
-        // Send all information needed to service to edit key in other thread
-        Intent intent = new Intent(activity, KeychainService.class);
-
-        intent.putExtra(KeychainService.EXTRA_OPERATION_INPUT, operationInput);
-        intent.putExtra(KeychainService.EXTRA_CRYPTO_INPUT, cryptoInput);
-
         ServiceProgressHandler saveHandler = new ServiceProgressHandler(activity) {
             @Override
             public void handleMessage(Message message) {
@@ -331,9 +326,7 @@ public class CryptoOperationHelper<T extends Parcelable, S extends OperationResu
             }
         };
 
-        // Create a new Messenger for the communication back
         Messenger messenger = new Messenger(saveHandler);
-        intent.putExtra(KeychainService.EXTRA_MESSENGER, messenger);
 
         if (mProgressMessageResource != null) {
             saveHandler.showProgressDialog(
@@ -341,7 +334,8 @@ public class CryptoOperationHelper<T extends Parcelable, S extends OperationResu
                     ProgressDialog.STYLE_HORIZONTAL, mCancellable);
         }
 
-        activity.startService(intent);
+        KeychainService keychainService = KeychainService.getInstance(activity);
+        keychainService.startOperationInBackground(operationInput, cryptoInput, messenger);
     }
 
     public void cryptoOperation() {
