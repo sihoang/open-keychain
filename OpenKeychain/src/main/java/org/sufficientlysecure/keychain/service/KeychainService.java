@@ -24,11 +24,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import android.content.Context;
-import android.os.Bundle;
-import android.os.Message;
-import android.os.Messenger;
 import android.os.Parcelable;
-import android.os.RemoteException;
 
 import org.sufficientlysecure.keychain.operations.BackupOperation;
 import org.sufficientlysecure.keychain.operations.BaseOperation;
@@ -50,9 +46,7 @@ import org.sufficientlysecure.keychain.pgp.PgpDecryptVerifyOperation;
 import org.sufficientlysecure.keychain.pgp.Progressable;
 import org.sufficientlysecure.keychain.pgp.SignEncryptParcel;
 import org.sufficientlysecure.keychain.provider.KeyWritableRepository;
-import org.sufficientlysecure.keychain.service.ServiceProgressHandler.MessageStatus;
 import org.sufficientlysecure.keychain.service.input.CryptoInputParcel;
-import timber.log.Timber;
 
 
 public class KeychainService {
@@ -78,42 +72,8 @@ public class KeychainService {
     // this attribute can possibly merged with the one above? not sure...
     private AtomicBoolean mActionCanceled = new AtomicBoolean(false);
 
-    public void startOperationInBackground(Parcelable inputParcel, CryptoInputParcel cryptoInput, Messenger messenger) {
+    public void startOperationInBackground(Parcelable inputParcel, CryptoInputParcel cryptoInput, Progressable progressable, OperationCallback operationCallback) {
         mActionCanceled.set(false);
-
-        Communicator communicator = new Communicator(messenger);
-
-        Progressable progressable = new Progressable() {
-            @Override
-            public void setProgress(String message, int progress, int max) {
-                Timber.d("Send message by setProgress with progress=" + progress + ", max="
-                        + max);
-
-                Bundle data = new Bundle();
-                if (message != null) {
-                    data.putString(ServiceProgressHandler.DATA_MESSAGE, message);
-                }
-                data.putInt(ServiceProgressHandler.DATA_PROGRESS, progress);
-                data.putInt(ServiceProgressHandler.DATA_PROGRESS_MAX, max);
-
-                communicator.sendMessageToHandler(MessageStatus.UPDATE_PROGRESS, data);
-            }
-
-            @Override
-            public void setProgress(int resourceId, int progress, int max) {
-                setProgress(context.getString(resourceId), progress, max);
-            }
-
-            @Override
-            public void setProgress(int progress, int max) {
-                setProgress(null, progress, max);
-            }
-
-            @Override
-            public void setPreventCancel() {
-                communicator.sendMessageToHandler(MessageStatus.PREVENT_CANCEL, (Bundle) null);
-            }
-        };
 
         Runnable actionRunnable = () -> {
             BaseOperation op;
@@ -152,7 +112,7 @@ public class KeychainService {
 
             @SuppressWarnings("unchecked") // this is unchecked, we make sure it's the correct op above!
             OperationResult result = op.execute(inputParcel, cryptoInput);
-            communicator.sendMessageToHandler(MessageStatus.OKAY, result);
+            operationCallback.operationFinished(result);
         };
 
         threadPoolExecutor.execute(actionRunnable);
@@ -164,35 +124,7 @@ public class KeychainService {
         }
     }
 
-    public static class Communicator {
-        final Messenger messenger;
-
-        Communicator(Messenger messenger) {
-            this.messenger = messenger;
-        }
-
-        void sendMessageToHandler(MessageStatus status, Bundle data) {
-            Message msg = Message.obtain();
-            assert msg != null;
-            msg.arg1 = status.ordinal();
-            if (data != null) {
-                msg.setData(data);
-            }
-
-            try {
-                messenger.send(msg);
-            } catch (RemoteException e) {
-                Timber.w(e, "Exception sending message, Is handler present?");
-            } catch (NullPointerException e) {
-                Timber.w(e, "Messenger is null!");
-            }
-        }
-
-        void sendMessageToHandler(MessageStatus status, OperationResult data) {
-            Bundle bundle = new Bundle();
-            bundle.putParcelable(OperationResult.EXTRA_RESULT, data);
-            sendMessageToHandler(status, bundle);
-        }
+    public interface OperationCallback {
+        void operationFinished(OperationResult data);
     }
-
 }
